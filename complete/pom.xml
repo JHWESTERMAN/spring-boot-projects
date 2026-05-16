@@ -28,7 +28,10 @@
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
     <!-- end::actuator[] -->
-
+      <dependency>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-data-jpa</artifactId>
+      </dependency>
     <!-- tag::tests[] -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
