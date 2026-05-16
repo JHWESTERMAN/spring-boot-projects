@@ -1,4 +1,4 @@
-package com.example.springboot.model;
+package com.example.springboot;
 
 import jakarta.persistence.*;
 
@@ -8,6 +8,7 @@ public class Message {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @SuppressWarnings("unused")
   private Long id;
 
   private String text;
@@ -17,7 +18,7 @@ public class Message {
   public Message(String text) {
     this.text = text;
   }
-
+  @SuppressWarnings("unused")
   public Long getId() {
     return id;
   }

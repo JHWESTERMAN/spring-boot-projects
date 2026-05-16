@@ -1,8 +1,4 @@
-package com.example.springboot.controller;
-
-import com.example.springboot.model.Message;
-import com.example.springboot.repository.MessageRepository;
-import com.example.springboot.exception.MessageNotFoundException;
+package com.example.springboot;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

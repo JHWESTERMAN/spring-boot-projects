@@ -1,4 +1,4 @@
-package com.example.springboot.exception;
+package com.example.springboot;
 
 public class MessageNotFoundException extends RuntimeException {
   public MessageNotFoundException(Long id) {
