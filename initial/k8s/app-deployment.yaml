@@ -1,0 +1,56 @@
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-boot-app
+  namespace: messages-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: spring-boot-app
+  template:
+    metadata:
+      labels:
+        app: spring-boot-app
+    spec:
+      containers:
+        - name: spring-boot-app
+          image: ghcr.io/jhwesterman/spring-boot-messages:latest
+          env:
+            - name: DB_URL
+              value: jdbc:postgresql://postgres:5432/messagesdb
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+---
+# Service — maakt app bereikbaar van buiten het cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: spring-boot-service
+  namespace: messages-app
+spec:
+  type: LoadBalancer
+  selector:
+    app: spring-boot-app
+  ports:
+    - port: 80
+      targetPort: 8080
