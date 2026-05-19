@@ -1,6 +1,8 @@
 package com.example.springboot;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 @Entity
 @Table(name = "messages")
@@ -11,6 +13,8 @@ public class Message {
   @SuppressWarnings("unused")
   private Long id;
 
+  @NotNull
+  @Size(min = 1, max = 255)
   private String text;
 
   public Message() {}

@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.HttpStatus;
-
+import jakarta.validation.Valid;
 import java.util.List;
 
 @RestController
@@ -44,7 +44,7 @@ public class MessageController {
     // CREATE — via queue
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public String create(@RequestBody Message message) {
+    public String create(@Valid @RequestBody Message message) {
         log.info("Ontvangen create request: {}", message.getText());
         producer.sendCreate(message.getText());
         return "Bericht in verwerking";
