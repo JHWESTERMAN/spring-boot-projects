@@ -30,6 +30,12 @@ spec:
                 secretKeyRef:
                   name: postgres-secret
                   key: password
+            - name: SPRING_ACTIVEMQ_BROKER_URL
+              value: tcp://activemq:61616
+            - name: SPRING_ACTIVEMQ_USER
+              value: admin
+            - name: SPRING_ACTIVEMQ_PASSWORD
+              value: admin
           ports:
             - containerPort: 8080
           resources:
@@ -41,7 +47,7 @@ spec:
               cpu: "500m"
 
 ---
-# Service — maakt app bereikbaar van buiten het cluster
+# Service — bereikbaar van buiten het cluster
 apiVersion: v1
 kind: Service
 metadata:

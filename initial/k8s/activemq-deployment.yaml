@@ -1,0 +1,48 @@
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: activemq
+  namespace: messages-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: activemq
+  template:
+    metadata:
+      labels:
+        app: activemq
+    spec:
+      containers:
+        - name: activemq
+          image: apache/activemq-classic:latest
+          ports:
+            - containerPort: 61616
+            - containerPort: 8161
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+---
+# Service — intern bereikbaar binnen cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: activemq
+  namespace: messages-app
+spec:
+  type: ClusterIP
+  selector:
+    app: activemq
+  ports:
+    - name: jms
+      port: 61616
+      targetPort: 61616
+    - name: console
+      port: 8161
+      targetPort: 8161
