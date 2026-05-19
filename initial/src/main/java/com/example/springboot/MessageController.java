@@ -3,6 +3,7 @@ package com.example.springboot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
 
@@ -10,56 +11,62 @@ import java.util.List;
 @RequestMapping("/api/messages")
 public class MessageController {
 
-  private final MessageRepository repository;
-  private static final Logger log = LoggerFactory.getLogger(MessageController.class);
+    private final MessageRepository repository;
+    private static final Logger log = LoggerFactory.getLogger(MessageController.class);
+    private final MessageProducer producer;
 
-  public MessageController(MessageRepository repository) {
-    this.repository = repository;
-  }
-
-  // GET all (newest first)
-  @GetMapping
-  public List<Message> all() {
-    return repository.findAllByOrderByIdDesc();
-  }
-
-  // GET by id
-  @GetMapping("/{id}")
-  public Message one(@PathVariable Long id) {
-    return repository.findById(id)
-        .orElseThrow(() -> new MessageNotFoundException(id));
-  }
-
-  // SEARCH
-  @GetMapping("/search")
-  public List<Message> search(@RequestParam String q) {
-    return repository.findByTextContainingIgnoreCase(q);
-  }
-
-  // CREATE
-  @PostMapping
-  public Message create(@RequestBody Message message) {
-    log.info("Creating message: {}", message.getText());
-    return repository.save(message);
-  }
-
-  // UPDATE
-  @PutMapping("/{id}")
-  public Message update(@PathVariable Long id, @RequestBody Message updated) {
-
-    Message msg = repository.findById(id)
-        .orElseThrow(() -> new MessageNotFoundException(id));
-
-    msg.setText(updated.getText());
-    return repository.save(msg);
-  }
-
-  // DELETE
-  @DeleteMapping("/{id}")
-  public void delete(@PathVariable Long id) {
-    if (!repository.existsById(id)) {
-      throw new MessageNotFoundException(id);
+    public MessageController(MessageRepository repository, MessageProducer producer) {
+        this.repository = repository;
+        this.producer = producer;
     }
-    repository.deleteById(id);
-  }
+
+    // GET all (newest first)
+    @GetMapping
+    public List<Message> all() {
+
+        return repository.findAllByOrderByIdDesc();
+    }
+
+    // GET by id
+    @GetMapping("/{id}")
+    public Message one(@PathVariable Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new MessageNotFoundException(id));
+    }
+
+    // SEARCH
+    @GetMapping("/search")
+    public List<Message> search(@RequestParam String q) {
+
+        return repository.findByTextContainingIgnoreCase(q);
+    }
+
+    // CREATE — via queue
+    @PostMapping
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public String create(@RequestBody Message message) {
+        log.info("Ontvangen create request: {}", message.getText());
+        producer.sendCreate(message.getText());
+        return "Bericht in verwerking";
+    }
+
+    // UPDATE — via queue
+    @PutMapping("/{id}")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public String update(@PathVariable Long id, @RequestBody Message updated) {
+        if (!repository.existsById(id)) {
+            throw new MessageNotFoundException(id);
+        }
+        producer.sendUpdate(id, updated.getText());
+        return "Update in verwerking";
+    }
+
+    // DELETE
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable Long id) {
+        if (!repository.existsById(id)) {
+            throw new MessageNotFoundException(id);
+        }
+        repository.deleteById(id);
+    }
 }
