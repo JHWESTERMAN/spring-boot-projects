@@ -41,6 +41,7 @@ services:
       SPRING_DATASOURCE_USERNAME: jeroen
       SPRING_DATASOURCE_PASSWORD: secret
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      ACTIVEMQ_BROKER_URL: failover:(tcp://activemq:61616)?maxReconnectAttempts=10&initialReconnectDelay=500&maxReconnectDelay=5000&useExponentialBackOff=true
       SPRING_ACTIVEMQ_BROKER_URL: tcp://activemq:61616
       SPRING_ACTIVEMQ_USER: admin
       SPRING_ACTIVEMQ_PASSWORD: admin

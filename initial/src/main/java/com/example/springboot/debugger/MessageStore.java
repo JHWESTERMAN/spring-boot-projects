@@ -8,8 +8,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.ArrayBlockingQueue;
 
 @Component
 public class MessageStore {
@@ -17,8 +16,8 @@ public class MessageStore {
     private static final Logger log = LoggerFactory.getLogger(MessageStore.class);
     private static final int MAX_SIZE = 5000;
 
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final List<CapturedMessage> messages = new ArrayList<>();
+    private final ArrayBlockingQueue<CapturedMessage> messages =
+            new ArrayBlockingQueue<>(MAX_SIZE);
 
     // ----------------------------
     // Inner class — captured message
@@ -29,7 +28,7 @@ public class MessageStore {
         public final String body;
         public final String correlationId;
         public final Map<String, String> headers;
-        public final String timestamp;  // ← verander van Instant naar String
+        public final String timestamp;
         public final String direction;
 
         public CapturedMessage(String id, String queue, String body,
@@ -40,7 +39,7 @@ public class MessageStore {
             this.body = body;
             this.correlationId = correlationId;
             this.headers = headers;
-            this.timestamp = timestamp.toString();  // ← zet om naar String
+            this.timestamp = timestamp.toString();
             this.direction = direction;
         }
     }
@@ -49,110 +48,73 @@ public class MessageStore {
     // Opslaan
     // ----------------------------
     public void store(CapturedMessage message) {
-        lock.writeLock().lock();
-        try {
-            if (messages.size() >= MAX_SIZE) {
-                messages.remove(0); // evict oudste
-                log.debug("Ring buffer vol — oudste bericht verwijderd");
-            }
-            messages.add(message);
-            log.debug("Bericht opgeslagen: queue={}, id={}", message.queue, message.id);
-        } finally {
-            lock.writeLock().unlock();
+        if (!messages.offer(message)) {
+            messages.poll();           // verwijder oudste
+            messages.offer(message);   // voeg nieuwe toe
+            log.debug("Ring buffer vol — oudste bericht verwijderd");
         }
+        log.debug("Bericht opgeslagen: queue={}, id={}", message.queue, message.id);
     }
 
     // ----------------------------
     // Ophalen — alle berichten
     // ----------------------------
     public List<CapturedMessage> getAll() {
-        lock.readLock().lock();
-        try {
-            return new ArrayList<>(messages);
-        } finally {
-            lock.readLock().unlock();
-        }
+        return new ArrayList<>(messages);
     }
 
     // ----------------------------
     // Ophalen — filter op queue
     // ----------------------------
     public List<CapturedMessage> getByQueue(String queue) {
-        lock.readLock().lock();
-        try {
-            return messages.stream()
-                    .filter(m -> queue.equals(m.queue))
-                    .toList();
-        } finally {
-            lock.readLock().unlock();
-        }
+        return messages.stream()
+                .filter(m -> queue.equals(m.queue))
+                .toList();
     }
 
     // ----------------------------
     // Ophalen — filter op correlationId
     // ----------------------------
     public List<CapturedMessage> getByCorrelationId(String correlationId) {
-        lock.readLock().lock();
-        try {
-            return messages.stream()
-                    .filter(m -> correlationId.equals(m.correlationId))
-                    .toList();
-        } finally {
-            lock.readLock().unlock();
-        }
+        return messages.stream()
+                .filter(m -> correlationId.equals(m.correlationId))
+                .toList();
+    }
+
+    // ----------------------------
+    // Ophalen — filter op tijdsbereik
+    // ----------------------------
+    public List<CapturedMessage> getByTimeRange(Instant from, Instant to) {
+        return messages.stream()
+                .filter(m -> {
+                    Instant ts = Instant.parse(m.timestamp);
+                    return ts.isAfter(from) && ts.isBefore(to);
+                })
+                .toList();
     }
 
     // ----------------------------
     // Ophalen — één bericht op id
     // ----------------------------
     public CapturedMessage getById(String id) {
-        lock.readLock().lock();
-        try {
-            return messages.stream()
-                    .filter(m -> id.equals(m.id))
-                    .findFirst()
-                    .orElse(null);
-        } finally {
-            lock.readLock().unlock();
-        }
+        return messages.stream()
+                .filter(m -> id.equals(m.id))
+                .findFirst()
+                .orElse(null);
     }
 
-    // Ophalen — filter op tijdsbereik
-    public List<CapturedMessage> getByTimeRange(Instant from, Instant to) {
-        lock.readLock().lock();
-        try {
-            return messages.stream()
-                    .filter(m -> {
-                        Instant ts = Instant.parse(m.timestamp);
-                        return ts.isAfter(from) && ts.isBefore(to);
-                    })
-                    .toList();
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
     // ----------------------------
     // Wissen
     // ----------------------------
     public void clear() {
-        lock.writeLock().lock();
-        try {
-            messages.clear();
-            log.info("MessageStore geleegd");
-        } finally {
-            lock.writeLock().unlock();
-        }
+        messages.clear();
+        log.info("MessageStore geleegd");
     }
 
     // ----------------------------
     // Statistieken
     // ----------------------------
     public int size() {
-        lock.readLock().lock();
-        try {
-            return messages.size();
-        } finally {
-            lock.readLock().unlock();
-        }
+        return messages.size();
     }
 }

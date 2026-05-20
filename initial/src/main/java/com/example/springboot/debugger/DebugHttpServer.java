@@ -161,25 +161,8 @@ public class DebugHttpServer {
 
                     <div id="status"></div>
 
-                    <!-- Sectie 1: Verstuurde berichten -->
-                    <div class="section">
-                        <h2>Verstuurde berichten <span class="count" id="send-count"></span></h2>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Timestamp</th>
-                                    <th>Richting</th>
-                                    <th>Queue</th>
-                                    <th>CorrelationId</th>
-                                    <th>Body</th>
-                                    <th>Actie</th>
-                                </tr>
-                            </thead>
-                            <tbody id="send-messages"></tbody>
-                        </table>
-                    </div>
 
-                    <!-- Sectie 2: Ontvangen berichten -->
+                    <!-- Sectie 1: Ontvangen berichten -->
                     <div class="section">
                         <h2>Ontvangen berichten <span class="count" id="receive-count"></span></h2>
                         <table>
@@ -197,7 +180,7 @@ public class DebugHttpServer {
                         </table>
                     </div>
 
-                    <!-- Sectie 3: Gereplayde berichten -->
+                    <!-- Sectie 2: Gereplayde berichten -->
                     <div class="section">
                         <h2>Gereplayde berichten <span class="count" id="replay-count"></span></h2>
                         <table>
@@ -237,10 +220,7 @@ public class DebugHttpServer {
                             const res = await fetch('/debug/messages');
                             const messages = await res.json();
 
-                            // Splits berichten in drie groepen
-                            const sent = messages
-                                .filter(m => m.direction === 'SEND' && (!m.headers || !m.headers['X-MQDebugger-Replay']))
-                                .reverse();
+                            // Splits berichten in twee  groepen
                             const received = messages
                                 .filter(m => m.direction === 'RECEIVE')
                                 .reverse();
@@ -249,12 +229,10 @@ public class DebugHttpServer {
                                 .reverse();
 
                             // Render tabellen
-                            renderTable('send-messages', sent, true);
                             renderTable('receive-messages', received, true);
                             renderTable('replayed-messages', replayed, false);
 
                             // Tellers bijwerken
-                            document.getElementById('send-count').textContent = `(${sent.length})`;
                             document.getElementById('receive-count').textContent = `(${received.length})`;
                             document.getElementById('replay-count').textContent = `(${replayed.length})`;
                         }
