@@ -22,7 +22,7 @@ public class MessageInterceptor implements MessageListener {
     private MessageStore store;
 
     // ----------------------------
-    // Onderschep binnenkomend bericht
+    // Onderschep binnenkomend bericht (MessageListener)
     // ----------------------------
     @Override
     public void onMessage(Message message) {
@@ -45,6 +45,17 @@ public class MessageInterceptor implements MessageListener {
     }
 
     // ----------------------------
+    // Onderschep binnenkomend bericht met queuenaam
+    // ----------------------------
+    public void interceptReceive(Message message, String queueName) {
+        try {
+            store.store(capture(message, queueName, "RECEIVE"));
+        } catch (Exception e) {
+            log.error("Fout bij onderscheppen binnenkomend bericht", e);
+        }
+    }
+
+    // ----------------------------
     // Capture zonder queuenaam
     // ----------------------------
     private MessageStore.CapturedMessage capture(Message message, String direction)
@@ -61,7 +72,6 @@ public class MessageInterceptor implements MessageListener {
     // ----------------------------
     private MessageStore.CapturedMessage capture(Message message,
                                                  String queue, String direction) throws JMSException {
-
         String id = UUID.randomUUID().toString();
         String correlationId = message.getJMSCorrelationID();
         String body = extractBody(message);
