@@ -1,5 +1,6 @@
 package com.example.springboot.debugger;
 
+import com.example.springboot.MessageEvent;
 import jakarta.jms.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,8 +81,13 @@ public class MessageInterceptor implements MessageListener {
     private String extractBody(Message message) throws JMSException {
         if (message instanceof TextMessage) {
             return ((TextMessage) message).getText();
-        } else if (message instanceof ObjectMessage) {
-            Object obj = ((ObjectMessage) message).getObject();
+        } else if (message instanceof ObjectMessage objectMessage) {
+            Object obj = objectMessage.getObject();
+            if (obj instanceof MessageEvent event) {
+                return "type=" + event.getType() +
+                        ", id=" + event.getId() +
+                        ", text=" + event.getText();
+            }
             return obj != null ? obj.toString() : "null";
         } else if (message instanceof BytesMessage bytesMessage) {
             byte[] bytes = new byte[(int) bytesMessage.getBodyLength()];

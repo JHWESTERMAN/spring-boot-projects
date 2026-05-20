@@ -123,42 +123,47 @@ public class DebugHttpServer {
     // ----------------------------
     private void handleUi(HttpExchange exchange) throws IOException {
         String html = """
-            <!DOCTYPE html>
-            <html lang="nl">
-            <head>
-                <meta charset="UTF-8">
-                <title>MQ Flow Debugger</title>
-                <style>
-                    body { font-family: monospace; background: #1e1e2e; color: #cdd6f4; padding: 20px; }
-                    h1 { color: #89b4fa; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                    th { background: #313244; padding: 10px; text-align: left; color: #89b4fa; }
-                    td { padding: 8px; border-bottom: 1px solid #313244; font-size: 12px; }
-                    tr:hover { background: #313244; }
-                    button { background: #89b4fa; color: #1e1e2e; border: none;
-                             padding: 4px 10px; cursor: pointer; border-radius: 4px; }
-                    button:hover { background: #74c7ec; }
-                    .controls { margin: 20px 0; display: flex; gap: 10px; align-items: center; }
-                    input { background: #313244; color: #cdd6f4; border: 1px solid #6c7086;
-                            padding: 6px; border-radius: 4px; }
-                    .replay { background: #a6e3a1; }
-                    .send { background: #89b4fa; }
-                    .receive { background: #f38ba8; }
-                    #status { margin-top: 10px; color: #a6e3a1; }
-                </style>
-            </head>
-            <body>
-                <h1>MQ Flow Debugger</h1>
+        <!DOCTYPE html>
+        <html lang="nl">
+        <head>
+            <meta charset="UTF-8">
+            <title>MQ Flow Debugger</title>
+            <style>
+                body { font-family: monospace; background: #1e1e2e; color: #cdd6f4; padding: 20px; }
+                h1 { color: #89b4fa; }
+                h2 { color: #a6e3a1; margin-top: 30px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th { background: #313244; padding: 10px; text-align: left; color: #89b4fa; }
+                td { padding: 8px; border-bottom: 1px solid #313244; font-size: 12px; }
+                tr:hover { background: #313244; }
+                button { background: #89b4fa; color: #1e1e2e; border: none;
+                         padding: 4px 10px; cursor: pointer; border-radius: 4px; }
+                button:hover { background: #74c7ec; }
+                .controls { margin: 20px 0; display: flex; gap: 10px; align-items: center; }
+                input { background: #313244; color: #cdd6f4; border: 1px solid #6c7086;
+                        padding: 6px; border-radius: 4px; }
+                .SEND { background: #89b4fa; color: #1e1e2e; padding: 2px 6px; border-radius: 3px; }
+                .RECEIVE { background: #f38ba8; color: #1e1e2e; padding: 2px 6px; border-radius: 3px; }
+                .REPLAY { background: #a6e3a1; color: #1e1e2e; padding: 2px 6px; border-radius: 3px; }
+                #status { margin-top: 10px; color: #a6e3a1; font-weight: bold; }
+                .section { margin-top: 30px; border-top: 1px solid #313244; padding-top: 20px; }
+            </style>
+        </head>
+        <body>
+            <h1>MQ Flow Debugger</h1>
 
-                <div class="controls">
-                    <label>Van: <input type="datetime-local" id="from"/></label>
-                    <label>Tot: <input type="datetime-local" id="to"/></label>
-                    <button onclick="replayTimeRange()">Replay tijdsbereik</button>
-                    <button onclick="loadMessages()">Vernieuwen</button>
-                </div>
+            <div class="controls">
+                <label>Van: <input type="datetime-local" id="from"/></label>
+                <label>Tot: <input type="datetime-local" id="to"/></label>
+                <button onclick="replayTimeRange()">Replay tijdsbereik</button>
+                <button onclick="loadMessages()">Vernieuwen</button>
+            </div>
 
-                <div id="status"></div>
+            <div id="status"></div>
 
+            <!-- Sectie 1: Originele berichten -->
+            <div class="section">
+                <h2>Originele berichten</h2>
                 <table>
                     <thead>
                         <tr>
@@ -170,53 +175,93 @@ public class DebugHttpServer {
                             <th>Actie</th>
                         </tr>
                     </thead>
-                    <tbody id="messages"></tbody>
+                    <tbody id="original-messages"></tbody>
                 </table>
+            </div>
 
-                <script>
-                    async function loadMessages() {
-                        const res = await fetch('/debug/messages');
-                        const messages = await res.json();
-                        const tbody = document.getElementById('messages');
-                        tbody.innerHTML = messages.reverse().map(m => `
+            <!-- Sectie 2: Gereplayde berichten -->
+            <div class="section">
+                <h2>Gereplayde berichten</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Richting</th>
+                            <th>Queue</th>
+                            <th>CorrelationId</th>
+                            <th>Body</th>
+                        </tr>
+                    </thead>
+                    <tbody id="replayed-messages"></tbody>
+                </table>
+            </div>
+
+            <script>
+                async function loadMessages() {
+                    const res = await fetch('/debug/messages');
+                    const messages = await res.json();
+
+                    // Splits berichten in origineel en gereplayd
+                    const original = messages.filter(m => !m.headers || !m.headers['X-MQDebugger-Replay']);
+                    const replayed = messages.filter(m => m.headers && m.headers['X-MQDebugger-Replay']);
+
+                    // Originele berichten
+                    const originalTbody = document.getElementById('original-messages');
+                    originalTbody.innerHTML = original.reverse().map(m => `
+                        <tr>
+                            <td>${new Date(m.timestamp).toLocaleString('nl-NL')}</td>
+                            <td><span class="${m.direction}">${m.direction}</span></td>
+                            <td>${m.queue}</td>
+                            <td>${m.correlationId || '-'}</td>
+                            <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${m.body}</td>
+                            <td><button onclick="replay('${m.id}')">Replay</button></td>
+                        </tr>
+                    `).join('');
+
+                    // Gereplayde berichten
+                    const replayedTbody = document.getElementById('replayed-messages');
+                    if (replayed.length === 0) {
+                        replayedTbody.innerHTML = '<tr><td colspan="5" style="color:#6c7086">Nog geen gereplayde berichten</td></tr>';
+                    } else {
+                        replayedTbody.innerHTML = replayed.reverse().map(m => `
                             <tr>
                                 <td>${new Date(m.timestamp).toLocaleString('nl-NL')}</td>
-                                <td><span class="${m.direction.toLowerCase()}">${m.direction}</span></td>
+                                <td><span class="REPLAY">REPLAY</span></td>
                                 <td>${m.queue}</td>
                                 <td>${m.correlationId || '-'}</td>
                                 <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${m.body}</td>
-                                <td><button onclick="replay('${m.id}')">Replay</button></td>
                             </tr>
                         `).join('');
                     }
+                }
 
-                    async function replay(id) {
-                        const res = await fetch('/debug/replay/' + id, { method: 'POST' });
-                        const text = await res.text();
-                        document.getElementById('status').textContent = text;
-                        setTimeout(loadMessages, 1000);
-                    }
+                async function replay(id) {
+                    const res = await fetch('/debug/replay/' + id, { method: 'POST' });
+                    const text = await res.text();
+                    document.getElementById('status').textContent = text;
+                    setTimeout(loadMessages, 1000);
+                }
 
-                    async function replayTimeRange() {
-                        const from = new Date(document.getElementById('from').value).toISOString();
-                        const to = new Date(document.getElementById('to').value).toISOString();
-                        const res = await fetch('/debug/replay/timerange', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ from, to })
-                        });
-                        const text = await res.text();
-                        document.getElementById('status').textContent = text;
-                        setTimeout(loadMessages, 1000);
-                    }
+                async function replayTimeRange() {
+                    const from = new Date(document.getElementById('from').value).toISOString();
+                    const to = new Date(document.getElementById('to').value).toISOString();
+                    const res = await fetch('/debug/replay/timerange', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ from, to })
+                    });
+                    const text = await res.text();
+                    document.getElementById('status').textContent = text;
+                    setTimeout(loadMessages, 1000);
+                }
 
-                    // Auto-refresh elke 3 seconden
-                    loadMessages();
-                    setInterval(loadMessages, 3000);
-                </script>
-            </body>
-            </html>
-            """;
+                // Auto-refresh elke 3 seconden
+                loadMessages();
+                setInterval(loadMessages, 3000);
+            </script>
+        </body>
+        </html>
+        """;
 
         exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
         byte[] bytes = html.getBytes();
@@ -225,7 +270,6 @@ public class DebugHttpServer {
             os.write(bytes);
         }
     }
-
     // ----------------------------
     // Helper methodes
     // ----------------------------

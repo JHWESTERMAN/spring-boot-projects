@@ -29,8 +29,8 @@ public class MessageStore {
         public final String body;
         public final String correlationId;
         public final Map<String, String> headers;
-        public final Instant timestamp;
-        public final String direction; // SEND of RECEIVE
+        public final String timestamp;  // ← verander van Instant naar String
+        public final String direction;
 
         public CapturedMessage(String id, String queue, String body,
                                String correlationId, Map<String, String> headers,
@@ -40,7 +40,7 @@ public class MessageStore {
             this.body = body;
             this.correlationId = correlationId;
             this.headers = headers;
-            this.timestamp = timestamp;
+            this.timestamp = timestamp.toString();  // ← zet om naar String
             this.direction = direction;
         }
     }
@@ -122,13 +122,15 @@ public class MessageStore {
         lock.readLock().lock();
         try {
             return messages.stream()
-                    .filter(m -> m.timestamp.isAfter(from) && m.timestamp.isBefore(to))
+                    .filter(m -> {
+                        Instant ts = Instant.parse(m.timestamp);
+                        return ts.isAfter(from) && ts.isBefore(to);
+                    })
                     .toList();
         } finally {
             lock.readLock().unlock();
         }
     }
-
     // ----------------------------
     // Wissen
     // ----------------------------

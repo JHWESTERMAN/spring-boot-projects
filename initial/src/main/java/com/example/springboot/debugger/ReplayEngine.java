@@ -9,6 +9,9 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 @Component
 public class ReplayEngine {
@@ -99,5 +102,19 @@ public class ReplayEngine {
             producer.send(message);
             log.info("Bericht gereplayd naar queue: {}", captured.queue);
         }
+        // Sla ook het gereplayde bericht op in de store
+        Map<String, String> replayHeaders = new HashMap<>(captured.headers);
+        replayHeaders.put("X-MQDebugger-Replay", "true");
+        replayHeaders.put("X-MQDebugger-OriginalId", captured.id);
+
+        store.store(new MessageStore.CapturedMessage(
+                UUID.randomUUID().toString(),
+                captured.queue,
+                captured.body,
+                captured.correlationId,
+                replayHeaders,
+                Instant.now(),
+                "SEND"
+        ));
     }
 }
