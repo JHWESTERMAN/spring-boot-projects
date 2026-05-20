@@ -1,0 +1,46 @@
+@startuml
+title Dependency Graph — Spring Boot Project
+
+skinparam backgroundColor #1e1e2e
+skinparam classBackgroundColor #89b4fa
+skinparam classBorderColor #6c7086
+skinparam arrowColor #cdd6f4
+skinparam fontColor #1e1e2e
+
+package "com.example.springboot" {
+    class SpringbootApplication
+    class MessageController
+    class MessageProducer
+    class MessageConsumer
+    class MessageEvent
+    class MessageNotFoundException
+    class SecurityConfig
+}
+
+package "com.example.springboot.debugger" #f38ba8 {
+    class MessageInterceptor
+    class MessageStore
+}
+
+package "repository / entity" #a6e3a1 {
+    interface MessageRepository
+    class Message
+}
+
+package "Spring Framework" #cba6f7 {
+    class JmsTemplate
+}
+
+MessageController --> MessageRepository
+MessageController --> MessageProducer
+MessageController --> MessageNotFoundException
+MessageProducer --> JmsTemplate
+MessageProducer --> MessageInterceptor
+MessageProducer --> MessageEvent
+MessageConsumer --> MessageRepository
+MessageConsumer --> MessageEvent
+MessageConsumer --> Message
+MessageRepository --> Message
+MessageInterceptor --> MessageStore
+
+@enduml
