@@ -53,3 +53,8 @@ services:
 
 volumes:
   postgres-data:
+
+networks:
+  default:
+    name: otel-monitoring_monitoring
+    external: true
