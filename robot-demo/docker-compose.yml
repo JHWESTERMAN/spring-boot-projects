@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+
+  # ActiveMQ broker (vervangt de echte TIBCO EMS in deze demo)
+  activemq:
+    image: apache/activemq-artemis:latest
+    container_name: robot-activemq
+    ports:
+      - "61616:61616"   # JMS
+      - "8161:8161"     # Web console (admin/admin)
+    environment:
+      ARTEMIS_USER: admin
+      ARTEMIS_PASSWORD: admin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8161"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RobotMock — vervangt Gazebo + rosbridge
+  robot-mock:
+    build:
+      context: ./robot-mock
+      dockerfile: Dockerfile
+    container_name: robot-mock
+    ports:
+      - "9090:9090"
+    depends_on:
+      activemq:
+        condition: service_healthy
+
+  # Bridge Service — Spring Boot
+  bridge-service:
+    build:
+      context: ./bridge-service
+      dockerfile: Dockerfile
+    container_name: bridge-service
+    ports:
+      - "8080:8080"
+    environment:
+      ROBOT_MOCK_URL: ws://robot-mock:9090/
+      SPRING_ACTIVEMQ_BROKER_URL: tcp://activemq:61616
+    depends_on:
+      - robot-mock
+      - activemq

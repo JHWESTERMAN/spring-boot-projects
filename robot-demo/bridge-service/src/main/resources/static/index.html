@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Robot Monitor</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+          --bg:       #0f0f0f;
+          --bg2:      #1a1a1a;
+          --bg3:      #222;
+          --border:   #2a2a2a;
+          --border2:  #333;
+          --text:     #e8e8e8;
+          --muted:    #666;
+          --dim:      #999;
+          --green:    #22c55e;
+          --red:      #ef4444;
+          --blue:     #3b82f6;
+          --amber:    #f59e0b;
+          --mono:     'JetBrains Mono', 'Fira Mono', 'Courier New', monospace;
+        }
+
+        body {
+          background: var(--bg);
+          color: var(--text);
+          font-family: var(--mono);
+          font-size: 13px;
+          min-height: 100vh;
+          padding: 1.5rem;
+        }
+
+        /* ── topbar ─────────────────────────────── */
+        .topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 1.5rem;
+          padding-bottom: 1rem;
+          border-bottom: 1px solid var(--border);
+        }
+        .logo {
+          font-size: 11px;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          color: var(--muted);
+        }
+        .conn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 11px;
+        }
+        .dot {
+          width: 7px; height: 7px;
+          border-radius: 50%;
+          background: var(--muted);
+        }
+        .dot.live { background: var(--green); animation: pulse 1.4s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+        .badge {
+          padding: 2px 8px;
+          border-radius: 3px;
+          border: 1px solid;
+          font-size: 10px;
+          letter-spacing: 0.06em;
+        }
+        .badge-ok  { color: var(--green); border-color: #166534; background: #052e16; }
+        .badge-err { color: var(--red);   border-color: #7f1d1d; background: #1c0a0a; }
+
+        /* ── metrics ────────────────────────────── */
+        .metrics {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+          margin-bottom: 1rem;
+        }
+        .metric {
+          background: var(--bg2);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          padding: 0.75rem 1rem;
+        }
+        .metric-label {
+          font-size: 10px;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--muted);
+          margin-bottom: 6px;
+        }
+        .metric-value {
+          font-size: 20px;
+          color: var(--text);
+        }
+        .metric-value.sm { font-size: 13px; padding-top: 3px; }
+        .metric-value.ok   { color: var(--green); }
+        .metric-value.bad  { color: var(--red); }
+
+        /* ── main grid ──────────────────────────── */
+        .main {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+        .card {
+          background: var(--bg2);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 1rem 1.25rem;
+        }
+        .card-title {
+          font-size: 10px;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--muted);
+          margin-bottom: 1rem;
+        }
+
+        /* ── joints ─────────────────────────────── */
+        .joint-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        .joint-name { font-size: 11px; color: var(--dim); width: 96px; flex-shrink: 0; }
+        .joint-bar-bg {
+          flex: 1;
+          height: 3px;
+          background: var(--border2);
+          border-radius: 2px;
+          overflow: hidden;
+        }
+        .joint-bar {
+          height: 3px;
+          background: var(--text);
+          border-radius: 2px;
+          transition: width 0.3s ease;
+        }
+        .joint-val {
+          font-size: 11px;
+          color: var(--dim);
+          width: 44px;
+          text-align: right;
+          flex-shrink: 0;
+        }
+
+        /* ── arm svg ────────────────────────────── */
+        #arm-svg { width: 100%; }
+
+        /* ── events ─────────────────────────────── */
+        .events-card {
+          background: var(--bg2);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 1rem 1.25rem;
+        }
+        .event-list { max-height: 200px; overflow-y: auto; }
+        .event-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 5px 0;
+          border-bottom: 1px solid var(--border);
+          font-size: 11px;
+        }
+        .event-item:last-child { border-bottom: none; }
+        .event-time { color: var(--muted); flex-shrink: 0; width: 60px; }
+        .event-type { flex-shrink: 0; width: 100px; }
+        .event-msg  { color: var(--dim); }
+        .tag {
+          font-size: 10px;
+          padding: 2px 6px;
+          border-radius: 3px;
+          border: 1px solid;
+        }
+        .tag-cycle { color: var(--blue);  border-color: #1e3a5f; background: #0a1929; }
+        .tag-task  { color: var(--dim);   border-color: var(--border2); background: var(--bg3); }
+        .tag-fault { color: var(--red);   border-color: #7f1d1d; background: #1c0a0a; }
+        .tag-ok    { color: var(--green); border-color: #166534; background: #052e16; }
+        .tag-alert { color: var(--amber); border-color: #78350f; background: #1c1007; }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <span class="logo">Robot Monitor // ProRail Demo</span>
+    <div class="conn">
+        <span class="dot" id="dot"></span>
+        <span class="badge badge-err" id="badge">offline</span>
+    </div>
+</div>
+
+<div class="metrics">
+    <div class="metric">
+        <div class="metric-label">Scenario state</div>
+        <div class="metric-value sm" id="m-state">—</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Cycles</div>
+        <div class="metric-value" id="m-cycles">—</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Fault</div>
+        <div class="metric-value" id="m-fault">—</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Last update</div>
+        <div class="metric-value sm" id="m-update">—</div>
+    </div>
+</div>
+
+<div class="main">
+    <div class="card">
+        <div class="card-title">Joint positions (rad)</div>
+        <div id="joints-container">
+            <div style="color:var(--muted); font-size:12px;">Wachten op data...</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-title">Arm — top view (pan / lift / elbow)</div>
+        <svg id="arm-svg" viewBox="0 0 220 220">
+            <circle cx="110" cy="110" r="7" fill="#333" stroke="#555" stroke-width="1"/>
+            <line id="seg0" x1="110" y1="110" x2="110" y2="70" stroke="#e8e8e8" stroke-width="3" stroke-linecap="round"/>
+            <line id="seg1" x1="110" y1="70"  x2="110" y2="45" stroke="#aaa"   stroke-width="2.5" stroke-linecap="round"/>
+            <line id="seg2" x1="110" y1="45"  x2="110" y2="25" stroke="#666"   stroke-width="2" stroke-linecap="round"/>
+            <circle id="j1" cx="110" cy="70"  r="4" fill="#1a1a1a" stroke="#e8e8e8" stroke-width="1.5"/>
+            <circle id="j2" cx="110" cy="45"  r="3" fill="#1a1a1a" stroke="#aaa"   stroke-width="1.5"/>
+            <circle id="j3" cx="110" cy="25"  r="3" fill="#666"/>
+            <text x="110" y="210" text-anchor="middle" font-size="10" fill="#555" font-family="monospace">shoulder / elbow / wrist</text>
+        </svg>
+    </div>
+</div>
+
+<div class="events-card">
+    <div class="card-title">Event feed</div>
+    <div class="event-list" id="event-list">
+        <div style="color:var(--muted); font-size:12px;">Geen events nog...</div>
+    </div>
+</div>
+
+<script>
+    const events = [];
+    let lastEvent = '';
+
+    function fmt(v) { return parseFloat(v).toFixed(2); }
+    function pct(v) { return Math.max(2, Math.round(((v + Math.PI) / (2 * Math.PI)) * 100)); }
+
+    function updateJoints(joints) {
+      const container = document.getElementById('joints-container');
+      container.innerHTML = Object.entries(joints).map(([name, val]) =>
+        `<div class="joint-row">
+          <span class="joint-name">${name.replace(/_/g,' ')}</span>
+          <div class="joint-bar-bg"><div class="joint-bar" style="width:${pct(val)}%"></div></div>
+          <span class="joint-val">${fmt(val)}</span>
+        </div>`
+      ).join('');
+      updateArm(joints);
+    }
+
+    function updateArm(j) {
+      const pan   = j['shoulder_pan']  || 0;
+      const lift  = j['shoulder_lift'] || 0;
+      const elbow = j['elbow']         || 0;
+      const cx = 110, cy = 110, L1 = 42, L2 = 32, L3 = 22;
+      const a0 = pan - Math.PI / 2;
+      const a1 = a0 + (lift + Math.PI / 2);
+      const a2 = a1 + elbow;
+      const x1 = cx + L1 * Math.cos(a0), y1 = cy + L1 * Math.sin(a0);
+      const x2 = x1 + L2 * Math.cos(a1), y2 = y1 + L2 * Math.sin(a1);
+      const x3 = x2 + L3 * Math.cos(a2), y3 = y2 + L3 * Math.sin(a2);
+      const s = v => v.toFixed(1);
+      document.getElementById('seg0').setAttribute('x2', s(x1));
+      document.getElementById('seg0').setAttribute('y2', s(y1));
+      document.getElementById('seg1').setAttribute('x1', s(x1)); document.getElementById('seg1').setAttribute('y1', s(y1));
+      document.getElementById('seg1').setAttribute('x2', s(x2)); document.getElementById('seg1').setAttribute('y2', s(y2));
+      document.getElementById('seg2').setAttribute('x1', s(x2)); document.getElementById('seg2').setAttribute('y1', s(y2));
+      document.getElementById('seg2').setAttribute('x2', s(x3)); document.getElementById('seg2').setAttribute('y2', s(y3));
+      document.getElementById('j1').setAttribute('cx', s(x1)); document.getElementById('j1').setAttribute('cy', s(y1));
+      document.getElementById('j2').setAttribute('cx', s(x2)); document.getElementById('j2').setAttribute('cy', s(y2));
+      document.getElementById('j3').setAttribute('cx', s(x3)); document.getElementById('j3').setAttribute('cy', s(y3));
+    }
+
+    function addEvent(type, msg) {
+      const now = new Date().toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+      let cls = 'tag-task';
+      if (type.includes('CYCLE'))   cls = 'tag-cycle';
+      else if (type.includes('FAULT') && !type.includes('CLEARED')) cls = 'tag-fault';
+      else if (type.includes('CLEARED')) cls = 'tag-ok';
+      else if (type.includes('ALERT'))   cls = 'tag-alert';
+      events.unshift({ now, type, msg, cls });
+      if (events.length > 50) events.pop();
+      document.getElementById('event-list').innerHTML = events.map(e =>
+        `<div class="event-item">
+          <span class="event-time">${e.now}</span>
+          <span class="event-type"><span class="tag ${e.cls}">${e.type.replace(/_/g,' ').toLowerCase()}</span></span>
+          <span class="event-msg">${e.msg}</span>
+        </div>`
+      ).join('');
+    }
+
+    function setOnline(ok) {
+      document.getElementById('dot').className   = 'dot' + (ok ? ' live' : '');
+      document.getElementById('badge').textContent = ok ? 'live' : 'offline';
+      document.getElementById('badge').className  = 'badge ' + (ok ? 'badge-ok' : 'badge-err');
+    }
+
+    async function poll() {
+      try {
+        const [s, j] = await Promise.all([
+          fetch('/robot/status').then(r => r.json()),
+          fetch('/robot/joints').then(r => r.json())
+        ]);
+        setOnline(true);
+        const fault = s.faultActive;
+        const mState = document.getElementById('m-state');
+        mState.textContent = s.scenarioState || '—';
+        mState.className = 'metric-value sm' + (fault ? ' bad' : '');
+        document.getElementById('m-cycles').textContent = s.cycleCount ?? '—';
+        const mf = document.getElementById('m-fault');
+        mf.textContent = fault ? 'ACTIVE' : 'none';
+        mf.className = 'metric-value ' + (fault ? 'bad' : 'ok');
+        document.getElementById('m-update').textContent =
+          s.lastUpdate ? new Date(s.lastUpdate).toLocaleTimeString('nl-NL') : '—';
+        if (j.joints) updateJoints(j.joints);
+        if (s.lastEvent && s.lastEvent !== lastEvent) {
+          lastEvent = s.lastEvent;
+          const [type, ...rest] = s.lastEvent.split(': ');
+          addEvent(type, rest.join(': '));
+        }
+      } catch(e) {
+        setOnline(false);
+      }
+    }
+
+    poll();
+    setInterval(poll, 1000);
+</script>
+</body>
+</html>
