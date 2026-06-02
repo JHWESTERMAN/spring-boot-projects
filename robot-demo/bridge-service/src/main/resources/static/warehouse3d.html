@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Warehouse 3D</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#07070f;overflow:hidden;font-family:'Courier New',monospace}
+    #canvas{display:block;width:100vw;height:100vh}
+    #hud{position:fixed;top:16px;left:16px;color:#e8e8e8;font-size:12px;letter-spacing:.08em;background:rgba(0,0,0,.88);padding:12px 16px;border-radius:6px;border:1px solid #222;min-width:200px}
+    .hr{display:flex;justify-content:space-between;gap:24px;margin-bottom:4px}
+    .hl{color:#444;font-size:10px;text-transform:uppercase;letter-spacing:.1em}
+    .hv{color:#e8e8e8}.ok{color:#22c55e}.bad{color:#ef4444}.nav{color:#38bdf8}
+    #events{position:fixed;bottom:16px;left:16px;font-size:11px;background:rgba(0,0,0,.88);padding:10px 14px;border-radius:6px;border:1px solid #222;width:340px;max-height:150px;overflow:hidden;font-family:monospace}
+    .ev{padding:3px 0;border-bottom:1px solid #111;color:#555}
+    .ev:last-child{border-bottom:none}
+    .et{margin-right:8px}
+    .eorder .et{color:#22c55e}.efault .et{color:#ef4444}.enav .et{color:#38bdf8}.epick .et{color:#f59e0b}
+    #legend{position:fixed;top:16px;right:16px;font-size:11px;background:rgba(0,0,0,.88);padding:10px 14px;border-radius:6px;border:1px solid #222;color:#e8e8e8}
+    .leg{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+    .ld{width:13px;height:13px;border-radius:3px}
+    .hint{position:fixed;bottom:16px;right:16px;color:#222;font-size:10px;font-family:monospace}
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="hud">
+  <div class="hr"><span class="hl">State</span><span class="hv" id="hs">—</span></div>
+  <div class="hr"><span class="hl">Positie</span><span class="hv" id="hp">—</span></div>
+  <div class="hr"><span class="hl">Target</span><span class="hv" id="ht">—</span></div>
+  <div class="hr"><span class="hl">Dock</span><span class="hv" id="hd">—</span></div>
+  <div class="hr"><span class="hl">Orders</span><span class="hv" id="ho">—</span></div>
+</div>
+<div id="events">
+  <div style="color:#333;font-size:10px;letter-spacing:.1em;margin-bottom:6px">EVENT FEED</div>
+  <div id="evl"></div>
+</div>
+<div id="legend">
+  <div style="color:#333;font-size:10px;letter-spacing:.1em;margin-bottom:6px">LEGENDA</div>
+  <div class="leg"><div class="ld" style="background:#f97316"></div>AGV Robot</div>
+  <div class="leg"><div class="ld" style="background:#6b7280"></div>Stelling</div>
+  <div class="leg"><div class="ld" style="background:#fbbf24"></div>Pick target</div>
+  <div class="leg"><div class="ld" style="background:#ef4444"></div>Dock target</div>
+  <div class="leg"><div class="ld" style="background:#7c3aed"></div>Route</div>
+</div>
+<div class="hint">Sleep = roteren · Scroll = zoomen</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── SIMPELE 1:1 MAPPING ───────────────────────────────────────────────────────
+// Grid cel (0-9) → world coördinaat = cel * SCALE
+// Gangpaden op grid x=1,4,7 (breed)
+// Stellingen op alle andere grid posities
+
+const SCALE = 3.0;  // meter per grid cel
+const GRID  = 10;
+const AISLE = new Set([1, 4, 7]);
+const SH    = 3.6;  // stelling hoogte
+
+function gx(i){ return i * SCALE; }  // grid naar world X
+function gz(i){ return i * SCALE; }  // grid naar world Z
+const CENTER = (GRID-1) * SCALE / 2;
+
+// ── RENDERER ──────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({canvas:document.getElementById('canvas'),antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.setClearColor(0x07070f);
+
+const scene  = new THREE.Scene();
+scene.fog    = new THREE.Fog(0x07070f, 45, 100);
+const camera = new THREE.PerspectiveCamera(52, window.innerWidth/window.innerHeight, 0.1, 150);
+
+// ── LICHT ─────────────────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x223355, 1.5));
+const dir = new THREE.DirectionalLight(0xfff8f0, 0.8);
+dir.position.set(CENTER, 20, CENTER-10);
+dir.castShadow = true;
+dir.shadow.mapSize.set(1024, 1024);
+Object.assign(dir.shadow.camera, {left:-30,right:30,top:30,bottom:-30,near:0.5,far:50});
+scene.add(dir);
+
+// plafond lampen boven gangpaden — alleen visueel, geen extra puntlichten
+[1,4,7].forEach(ai => [2,5,8].forEach(zi => {
+  const lamp = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.15,0.2,0.3,8),
+    new THREE.MeshStandardMaterial({color:0xfef9c3,emissive:0xfef9c3,emissiveIntensity:2.5})
+  );
+  lamp.position.set(gx(ai), 7.8, gz(zi));
+  scene.add(lamp);
+  const wire = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.02,0.02,1.0,4),
+    new THREE.MeshBasicMaterial({color:0x333344})
+  );
+  wire.position.set(gx(ai), 7.3, gz(zi));
+  scene.add(wire);
+  // PointLight alleen op kruispunten (max 4)
+}));
+
+// 2 puntlichten voor globale verlichting
+const pl1 = new THREE.PointLight(0xfff5d0, 1.5, 40);
+pl1.position.set(gx(4), 8, gz(4)); scene.add(pl1);
+
+// ── VLOER ─────────────────────────────────────────────────────────────────────
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry((GRID+1)*SCALE, (GRID+1)*SCALE),
+  new THREE.MeshStandardMaterial({color:0x0d0d1c, roughness:0.93})
+);
+floor.rotation.x = -Math.PI/2;
+floor.position.set(CENTER, -0.01, CENTER);
+floor.receiveShadow = true;
+scene.add(floor);
+
+// gele gangpad strepen
+[1,4,7].forEach(ai => {
+  const wx = gx(ai);
+  // x-gang streep
+  [-SCALE*0.45, SCALE*0.45].forEach(off => {
+    const s = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.12, (GRID+1)*SCALE),
+      new THREE.MeshBasicMaterial({color:0xfbbf24, transparent:true, opacity:0.7})
+    );
+    s.rotation.x = -Math.PI/2;
+    s.position.set(wx+off, 0.01, CENTER);
+    scene.add(s);
+  });
+  // z-gang streep
+  [-SCALE*0.45, SCALE*0.45].forEach(off => {
+    const s = new THREE.Mesh(
+      new THREE.PlaneGeometry((GRID+1)*SCALE, 0.12),
+      new THREE.MeshBasicMaterial({color:0xfbbf24, transparent:true, opacity:0.7})
+    );
+    s.rotation.x = -Math.PI/2;
+    s.position.set(CENTER, 0.01, gz(ai)+off);
+    scene.add(s);
+  });
+});
+
+// ── MUREN & PLAFOND ───────────────────────────────────────────────────────────
+const wallMat = new THREE.MeshStandardMaterial({color:0x0c0c1e, roughness:0.95});
+const TW = (GRID-1)*SCALE;
+[
+  [CENTER, 4, -SCALE*0.6, TW+SCALE, 8, 0.3],
+  [CENTER, 4, TW+SCALE*0.6, TW+SCALE, 8, 0.3],
+  [-SCALE*0.6, 4, CENTER, 0.3, 8, TW+SCALE],
+  [TW+SCALE*0.6, 4, CENTER, 0.3, 8, TW+SCALE],
+].forEach(([x,y,z,w,h,d]) => {
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat.clone());
+  wall.position.set(x,y,z); scene.add(wall);
+});
+const ceil = new THREE.Mesh(
+  new THREE.PlaneGeometry((GRID+1)*SCALE, (GRID+1)*SCALE),
+  new THREE.MeshStandardMaterial({color:0x090916, roughness:0.95, side:THREE.BackSide})
+);
+ceil.rotation.x = Math.PI/2;
+ceil.position.set(CENTER, 8, CENTER);
+scene.add(ceil);
+
+// ── STELLINGEN ────────────────────────────────────────────────────────────────
+const steel = new THREE.MeshStandardMaterial({color:0x6b7280, roughness:0.35, metalness:0.9});
+const plankM = new THREE.MeshStandardMaterial({color:0x1f2937, roughness:0.8});
+const BMATS = [
+  new THREE.MeshStandardMaterial({color:0x1e40af, roughness:0.7}),
+  new THREE.MeshStandardMaterial({color:0x065f46, roughness:0.7}),
+  new THREE.MeshStandardMaterial({color:0x7c2d12, roughness:0.7}),
+];
+
+// stelling breedte = SCALE * 0.75, hoogte = SH
+const RW = SCALE * 0.75;
+const RD = SCALE * 0.55;
+
+function buildRack(wx, wz, ci) {
+  const g = new THREE.Group();
+  // 4 stalen stijlen
+  [[-RW/2,-RD/2],[RW/2,-RD/2],[-RW/2,RD/2],[RW/2,RD/2]].forEach(([dx,dz]) => {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.09,SH,0.09), steel.clone());
+    p.position.set(dx, SH/2, dz);
+    p.castShadow = true;
+    g.add(p);
+  });
+  // 4 niveaus
+  for (let lv=0; lv<4; lv++) {
+    const h = 0.4 + lv * (SH/4);
+    [-RD/2+0.05, RD/2-0.05].forEach(dz => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(RW, 0.07, 0.07), steel.clone());
+      b.position.set(0, h, dz); g.add(b);
+    });
+    const pk = new THREE.Mesh(new THREE.BoxGeometry(RW-0.1, 0.06, RD-0.08), plankM.clone());
+    pk.position.set(0, h+0.04, 0); g.add(pk);
+    // dozen
+    const bm = BMATS[ci].clone();
+    const nb = 2 + Math.floor(Math.random()*3);
+    for (let b=0; b<nb; b++) {
+      const bh = 0.24 + Math.random()*0.1;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, bh, 0.26), bm);
+      box.position.set(-RW/2+0.18+b*0.36, h+0.04+bh/2, (Math.random()-0.5)*(RD-0.3));
+      box.castShadow = true; g.add(box);
+    }
+  }
+  g.position.set(wx, 0, wz);
+  scene.add(g);
+}
+
+// Bouw stellingen op alle niet-gangpad posities
+for (let xi=0; xi<GRID; xi++) {
+  for (let zi=0; zi<GRID; zi++) {
+    if (AISLE.has(xi) || AISLE.has(zi)) continue;
+    // dock posities overslaan
+    if ((xi===3&&zi===0)||(xi===6&&zi===0)||
+        (xi===3&&zi===9)||(xi===6&&zi===9)||
+        (xi===0&&zi===3)||(xi===0&&zi===6)||
+        (xi===9&&zi===3)||(xi===9&&zi===6)) {
+      // dock platform
+      const dp = new THREE.Mesh(
+        new THREE.BoxGeometry(SCALE*0.8, 0.2, SCALE*0.8),
+        new THREE.MeshStandardMaterial({color:0x0c1829, roughness:0.5, emissive:0x0d2137, emissiveIntensity:0.5})
+      );
+      dp.position.set(gx(xi), 0.1, gz(zi));
+      scene.add(dp);
+      continue;
+    }
+    buildRack(gx(xi), gz(zi), (xi+zi) % 3);
+  }
+}
+
+// ── CEL MARKERS voor highlighting ─────────────────────────────────────────────
+const markers = {};
+for (let xi=0; xi<GRID; xi++) for (let zi=0; zi<GRID; zi++) {
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(SCALE*0.85, SCALE*0.85),
+    new THREE.MeshBasicMaterial({color:0xfbbf24, transparent:true, opacity:0, side:THREE.DoubleSide})
+  );
+  m.rotation.x = -Math.PI/2;
+  m.position.set(gx(xi), 0.03, gz(zi));
+  scene.add(m);
+  markers[xi+','+zi] = m;
+}
+
+// ── AGV ROBOT ─────────────────────────────────────────────────────────────────
+const agv = new THREE.Group();
+const or = new THREE.MeshStandardMaterial({color:0xf97316,roughness:0.25,metalness:0.5,emissive:0xf97316,emissiveIntensity:0.25});
+const yw = new THREE.MeshStandardMaterial({color:0xfbbf24,roughness:0.3,emissive:0xfbbf24,emissiveIntensity:0.8});
+const dk = new THREE.MeshStandardMaterial({color:0x111111,roughness:0.9});
+const gl = new THREE.MeshStandardMaterial({color:0x7dd3fc,roughness:0.05,transparent:true,opacity:0.7,emissive:0x38bdf8,emissiveIntensity:0.4});
+const sv = new THREE.MeshStandardMaterial({color:0xd1d5db,roughness:0.3,metalness:0.85});
+
+function ap(geo,mat,x,y,z){ const m=new THREE.Mesh(geo,mat); m.castShadow=true; m.position.set(x,y,z); agv.add(m); return m; }
+
+ap(new THREE.BoxGeometry(1.1,0.26,1.55), or.clone(), 0,0.28,0);
+ap(new THREE.BoxGeometry(1.15,0.13,0.08), yw.clone(), 0,0.28,0.8);
+ap(new THREE.BoxGeometry(0.98,0.64,0.8), or.clone(), 0,0.75,-0.25);
+ap(new THREE.BoxGeometry(0.8,0.38,0.05), gl.clone(), 0,0.79,0.12);
+ap(new THREE.BoxGeometry(1.02,0.09,0.83), sv.clone(), 0,1.1,-0.25);
+const beacon = ap(new THREE.SphereGeometry(0.12,12,8,0,Math.PI*2,0,Math.PI/2), yw.clone(), 0,1.17,-0.25);
+ap(new THREE.BoxGeometry(0.1,1.25,0.1), sv.clone(), 0,0.82,0.42);
+ap(new THREE.BoxGeometry(0.1,0.08,0.88), sv.clone(), -0.24,0.2,0.86);
+ap(new THREE.BoxGeometry(0.1,0.08,0.88), sv.clone(),  0.24,0.2,0.86);
+[-0.37,0.37].forEach(xo => {
+  const lp = new THREE.Mesh(new THREE.SphereGeometry(0.088,8,8),
+    new THREE.MeshStandardMaterial({color:0xfef9c3,emissive:0xfef9c3,emissiveIntensity:5}));
+  lp.position.set(xo,0.3,0.9); agv.add(lp);
+});
+[[-0.58,0.54],[0.58,0.54],[-0.58,-0.58],[0.58,-0.58]].forEach(([wx,wz]) => {
+  const w = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.2,0.16,14), dk.clone());
+  w.rotation.z = Math.PI/2; w.position.set(wx,0.2,wz); agv.add(w);
+  const h = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,0.18,8), sv.clone());
+  h.rotation.z = Math.PI/2; h.position.set(wx,0.2,wz); agv.add(h);
+});
+[-0.6,0.6].forEach(sx => [0,0.28,-0.28].forEach((sz,i) => {
+  const s = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.11,0.22),
+    new THREE.MeshBasicMaterial({color:i%2===0?0xfbbf24:0x111111}));
+  s.position.set(sx,0.25,sz); agv.add(s);
+}));
+const glow = new THREE.PointLight(0xf97316, 2.5, 6);
+glow.position.set(0,0.5,0); agv.add(glow);
+agv.position.set(gx(4), 0, gz(4));
+scene.add(agv);
+
+let targetX = gx(4), targetZ = gz(4);
+
+// ── ROUTE ─────────────────────────────────────────────────────────────────────
+let routeObjs = [];
+function buildRoute(route) {
+  routeObjs.forEach(o => scene.remove(o)); routeObjs = [];
+  Object.values(markers).forEach(m => m.material.opacity = 0);
+  if (!route||!route.length) return;
+  route.forEach((r,i) => {
+    const wx = gx(r.x), wz = gz(r.y);
+    const mk = markers[r.x+','+r.y];
+    if (mk) { mk.material.color.set(0x7c3aed); mk.material.opacity=0.28; }
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.5,0.85,20),
+      new THREE.MeshBasicMaterial({color:0x7c3aed,side:THREE.DoubleSide,transparent:true,opacity:0.85})
+    );
+    ring.rotation.x=-Math.PI/2; ring.position.set(wx,0.04,wz);
+    scene.add(ring); routeObjs.push(ring);
+    if (i<route.length-1) {
+      const nx=gx(route[i+1].x), nz=gz(route[i+1].y);
+      const dx=nx-wx, dz=nz-wz, len=Math.sqrt(dx*dx+dz*dz);
+      if (len>0.1) {
+        const seg = new THREE.Mesh(
+          new THREE.BoxGeometry(len*0.88,0.09,0.7),
+          new THREE.MeshBasicMaterial({color:0x7c3aed,transparent:true,opacity:0.82})
+        );
+        seg.position.set(wx+dx/2,0.045,wz+dz/2);
+        seg.rotation.y=-Math.atan2(dz,dx);
+        scene.add(seg); routeObjs.push(seg);
+        const arr = new THREE.Mesh(
+          new THREE.ConeGeometry(0.3,0.5,8),
+          new THREE.MeshBasicMaterial({color:0xa78bfa})
+        );
+        arr.position.set(wx+dx*0.72,0.25,wz+dz*0.72);
+        arr.rotation.z=Math.PI/2; arr.rotation.y=Math.atan2(dx,dz);
+        scene.add(arr); routeObjs.push(arr);
+      }
+    }
+  });
+}
+
+function highlightTargets(tId, dId) {
+  if (tId) {
+    const m = tId.match(/([A-J])(\d)/);
+    if (m) { const mk=markers[(m[1].charCodeAt(0)-65)+','+m[2]]; if(mk){mk.material.color.set(0xfbbf24);mk.material.opacity=0.5;} }
+  }
+  if (dId) {
+    const m = dId.match(/([A-J])(\d)/);
+    if (m) { const mk=markers[(m[1].charCodeAt(0)-65)+','+m[2]]; if(mk){mk.material.color.set(0xef4444);mk.material.opacity=0.5;} }
+  }
+}
+
+// ── CAMERA ────────────────────────────────────────────────────────────────────
+// Isometrisch van bovenaf-schuin zodat stellingen EN gangpaden zichtbaar zijn
+let drag=false, lx=0, ly=0, theta=2.4, phi=0.58, rad=32;
+const ct = new THREE.Vector3(CENTER, 1, CENTER);
+function camUp(){
+  camera.position.set(
+    ct.x + rad*Math.sin(phi)*Math.sin(theta),
+    ct.y + rad*Math.cos(phi),
+    ct.z + rad*Math.sin(phi)*Math.cos(theta)
+  );
+  camera.lookAt(ct);
+}
+camUp();
+document.addEventListener('mousedown', e=>{drag=true;lx=e.clientX;ly=e.clientY;});
+document.addEventListener('mouseup', ()=>drag=false);
+document.addEventListener('mousemove', e=>{
+  if(!drag)return;
+  theta-=(e.clientX-lx)*0.013;
+  phi=Math.max(0.08,Math.min(1.5,phi+(e.clientY-ly)*0.013));
+  lx=e.clientX;ly=e.clientY;camUp();
+});
+document.addEventListener('wheel', e=>{rad=Math.max(5,Math.min(70,rad+e.deltaY*0.07));camUp();});
+window.addEventListener('resize',()=>{
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// ── EVENTS ────────────────────────────────────────────────────────────────────
+const evs=[]; let lastEv='';
+function addEv(type,msg){
+  let cls='eorder';
+  if(type.includes('FAULT'))cls='efault';
+  else if(type.includes('NAVIGAT')||type.includes('ARRIV'))cls='enav';
+  else if(type.includes('PICK')||type.includes('ORDER'))cls='epick';
+  evs.unshift({type:type.replace(/_/g,' ').toLowerCase(),msg,cls});
+  if(evs.length>7)evs.pop();
+  document.getElementById('evl').innerHTML=evs.map(e=>
+    `<div class="ev ${e.cls}"><span class="et">[${e.type}]</span>${e.msg.substring(0,44)}</div>`).join('');
+}
+
+// ── POLLING ───────────────────────────────────────────────────────────────────
+async function poll(){
+  try{
+    const[s,w]=await Promise.all([
+      fetch('/robot/status').then(r=>r.json()),
+      fetch('/robot/warehouse').then(r=>r.json())
+    ]);
+    const se=document.getElementById('hs');
+    se.textContent=s.scenarioState||'—';
+    se.className='hv '+(s.faultActive?'bad':s.scenarioState?.includes('NAVIGAT')?'nav':'ok');
+    document.getElementById('hp').textContent=`(${Math.round(w.robotX*10)/10}, ${Math.round(w.robotY*10)/10})`;
+    document.getElementById('ht').textContent=w.targetLocationId||'—';
+    document.getElementById('hd').textContent=w.targetDockId||'—';
+    document.getElementById('ho').textContent=s.cycleCount??'—';
+    if(s.lastEvent&&s.lastEvent!==lastEv){
+      lastEv=s.lastEvent;
+      const[tp,...r]=s.lastEvent.split(': ');
+      addEv(tp,r.join(': '));
+    }
+    // Robot positie: direct grid naar world
+    if(w.robotX!==undefined){
+      targetX = w.robotX * SCALE;
+      targetZ = w.robotY * SCALE;
+    }
+    buildRoute(w.route||[]);
+    highlightTargets(w.targetLocationId, w.targetDockId);
+  }catch(e){}
+}
+poll(); setInterval(poll,300);
+
+// ── RENDER LOOP ───────────────────────────────────────────────────────────────
+let t=0;
+function animate(){
+  requestAnimationFrame(animate); t+=0.018;
+  const dx=targetX-agv.position.x, dz=targetZ-agv.position.z;
+  const dist=Math.sqrt(dx*dx+dz*dz);
+  if(dist>0.05){ agv.position.x+=dx*0.05; agv.position.z+=dz*0.05; agv.rotation.y=Math.atan2(dx,dz); }
+  glow.intensity=2+Math.sin(t*5)*0.8;
+  beacon.material.emissiveIntensity=0.3+Math.abs(Math.sin(t*3.5))*2.5;
+  routeObjs.forEach((o,i)=>{
+    if(o.material?.transparent&&o.geometry?.type==='RingGeometry')
+      o.material.opacity=0.65+Math.sin(t*3+i*.9)*0.22;
+  });
+  renderer.render(scene,camera);
+}
+animate();
+</script>
+</body>
+</html>
